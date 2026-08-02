@@ -5,6 +5,7 @@ DonanımHaber'in genel RSS akışını her 5 dakikada bir kontrol eden Cloudflar
 ## Özellikler
 
 - RSS akışını 5 dakikada bir otomatik kontrol eder.
+- DonanımHaber doğrudan isteği engellerse otomatik olarak yedek RSS okuma yoluna geçer.
 - İlk kurulumda eski haberleri Discord'a doldurmaz.
 - Gönderilen haberleri 90 gün boyunca hatırlar ve tekrar göndermez.
 - Haber görseli, başlık, açıklama, kategori, kaynak ve yayın tarihini içeren Discord embed'i oluşturur.
@@ -86,6 +87,7 @@ Cloudflare'ın verdiği `workers.dev` adresini açın. Durum ekranında şunlar�
 - Toplam gönderilen haber sayısı
 - Son gönderim zamanı
 - Varsa son hata mesajı
+- Kullanılan RSS kaynağı (`direct-rss` veya `jina-fallback`)
 
 Makine tarafından okunabilir durum bilgisi aynı adresin `/health` yolundadır.
 

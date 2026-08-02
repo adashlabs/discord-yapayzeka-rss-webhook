@@ -1,7 +1,8 @@
-import { parseRss } from "./rss.js";
+import { parseRss, parseJinaFeed, parseJinaArticle } from "./rss.js";
 const filterSummary = "Filtre yok: RSS'teki tüm yeni haberler";
 
 const RSS_URL = "https://www.donanimhaber.com/rss/tum/";
+const JINA_FEED_URL = `https://r.jina.ai/${RSS_URL}`;
 const STATE_KEY = "bot:state:v1";
 const SEEN_TTL_SECONDS = 60 * 60 * 24 * 90;
 const MAX_SEND_PER_RUN = 6;
@@ -65,19 +66,64 @@ async function readState(env) {
     sentTotal: 0,
     lastCheck: null,
     lastSent: null,
-    lastError: null
+    lastError: null,
+    lastSource: null
   };
 }
 
+async function loadArticles() {
+  let directStatus = "istek başarısız";
+  try {
+    const cacheBucket = Math.floor(Date.now() / 300000);
+    const response = await fetch(`${RSS_URL}?worker_check=${cacheBucket}`, {
+      redirect: "follow",
+      signal: AbortSignal.timeout(12000),
+      headers: {
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/138.0 Safari/537.36",
+        accept: "application/rss+xml, application/xml, text/xml;q=0.9, */*;q=0.8",
+        "accept-language": "tr-TR,tr;q=0.9,en;q=0.8",
+        referer: "https://www.donanimhaber.com/"
+      }
+    });
+    directStatus = String(response.status);
+    if (response.ok) {
+      const articles = parseRss(await response.text());
+      if (articles.length) return { articles, source: "direct-rss" };
+      directStatus = "boş RSS";
+    }
+  } catch (error) {
+    directStatus = error instanceof Error ? error.message : String(error);
+  }
+
+  console.warn(`Doğrudan RSS kullanılamadı (${directStatus}); Jina yedeği deneniyor.`);
+  const fallback = await fetch(JINA_FEED_URL, {
+    signal: AbortSignal.timeout(15000),
+    headers: { accept: "text/plain; charset=utf-8", "user-agent": "DH-News-Discord-Worker/2.0" }
+  });
+  if (!fallback.ok) throw new Error(`RSS alınamadı (doğrudan: ${directStatus}, yedek: ${fallback.status}).`);
+  const articles = parseJinaFeed(await fallback.text());
+  if (!articles.length) throw new Error(`RSS yedeği ayrıştırılamadı (doğrudan: ${directStatus}).`);
+  return { articles, source: "jina-fallback" };
+}
+
+async function enrichFallbackArticle(article) {
+  if (!article.needsEnrichment) return article;
+  try {
+    const response = await fetch(`https://r.jina.ai/${article.link}`, {
+      signal: AbortSignal.timeout(12000),
+      headers: { accept: "text/plain; charset=utf-8", "user-agent": "DH-News-Discord-Worker/2.0" }
+    });
+    if (!response.ok) return article;
+    return { ...article, ...parseJinaArticle(await response.text()) };
+  } catch (error) {
+    console.warn("Haber ayrıntısı alınamadı", article.link, error instanceof Error ? error.message : String(error));
+    return article;
+  }
+}
 async function checkFeed(env) {
   if (!env.DISCORD_WEBHOOK_URL) throw new Error("DISCORD_WEBHOOK_URL secret'ı tanımlı değil.");
 
-  const response = await fetch(RSS_URL, {
-    headers: { "user-agent": "DH-Tech-Discord-Worker/1.0", accept: "application/rss+xml, application/xml;q=0.9" }
-  });
-  if (!response.ok) throw new Error(`RSS alınamadı (${response.status}).`);
-  const articles = parseRss(await response.text());
-  if (!articles.length) throw new Error("RSS içinde haber bulunamadı.");
+  const { articles, source } = await loadArticles();
 
   const state = await readState(env);
   const now = new Date().toISOString();
@@ -85,9 +131,9 @@ async function checkFeed(env) {
   // İlk çalışmada geçmiş haberleri yağdırmak yerine mevcut akışı başlangıç kabul et.
   if (!state.initialized) {
     await Promise.all(articles.map(async (article) => env.NEWS_STATE.put(await articleKey(article), "1", { expirationTtl: SEEN_TTL_SECONDS })));
-    const next = { ...state, initialized: true, checks: state.checks + 1, lastCheck: now, lastError: null, baselineCount: articles.length };
+    const next = { ...state, initialized: true, checks: state.checks + 1, lastCheck: now, lastError: null, lastSource: source, baselineCount: articles.length };
     await env.NEWS_STATE.put(STATE_KEY, JSON.stringify(next));
-    return { initialized: true, checked: articles.length, sent: 0 };
+    return { initialized: true, checked: articles.length, sent: 0, source };
   }
 
   const candidates = [];
@@ -102,8 +148,12 @@ async function checkFeed(env) {
   }
 
   candidates.sort((a, b) => new Date(a.article.pubDate) - new Date(b.article.pubDate));
+  const prepared = await Promise.all(candidates.slice(0, MAX_SEND_PER_RUN).map(async (item) => ({
+    ...item,
+    article: await enrichFallbackArticle(item.article)
+  })));
   let sent = 0;
-  for (const item of candidates.slice(0, MAX_SEND_PER_RUN)) {
+  for (const item of prepared) {
     await sendDiscord(env.DISCORD_WEBHOOK_URL, discordPayload(item.article, item.classification));
     await env.NEWS_STATE.put(item.key, "sent", { expirationTtl: SEEN_TTL_SECONDS });
     sent += 1;
@@ -116,10 +166,11 @@ async function checkFeed(env) {
     sentTotal: state.sentTotal + sent,
     lastCheck: now,
     lastSent: sent ? now : state.lastSent,
-    lastError: null
+    lastError: null,
+    lastSource: null
   };
   await env.NEWS_STATE.put(STATE_KEY, JSON.stringify(next));
-  return { initialized: false, checked: articles.length, matched: candidates.length, sent };
+  return { initialized: false, checked: articles.length, matched: candidates.length, sent, source };
 }
 
 async function recordError(env, error) {

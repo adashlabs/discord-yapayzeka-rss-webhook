@@ -43,3 +43,39 @@ export function parseRss(xml) {
   });
   return items.filter((item) => item.title && item.link);
 }
+function cleanMarkdownText(value = "") {
+  return value
+    .replace(/!\[[^\]]*\]\([^)]+\)/g, " ")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/[*_`#>]+/g, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export function parseJinaFeed(markdown) {
+  const pattern = /^### \[([^\]]+)\]\((https:\/\/www\.donanimhaber\.com\/[^)]+)\)\r?\n\r?\n\[[^\]]+\]\([^)]+\)\r?\n\r?\n([^\r\n]+)/gm;
+  return [...markdown.matchAll(pattern)].map((match) => ({
+    title: match[1].replace(/\\([\\[\]()_*])/g, "$1").trim(),
+    description: "Haberi okumak için başlığa tıklayın.",
+    link: match[2],
+    guid: match[2],
+    pubDate: match[3].trim(),
+    image: "",
+    needsEnrichment: true
+  }));
+}
+
+export function parseJinaArticle(markdown) {
+  const content = markdown.split(/Markdown Content:\s*/i)[1] || markdown;
+  const imageMatch = content.match(/!\[[^\]]*\]\((https:\/\/www\.donanimhaber\.com\/images\/images\/haber\/[^)]+)\)/i);
+  const tail = imageMatch ? content.slice((imageMatch.index || 0) + imageMatch[0].length) : content;
+  const description = tail
+    .split(/\r?\n\s*\r?\n/)
+    .map(cleanMarkdownText)
+    .find((paragraph) => paragraph.length >= 60 && !/^(anasayfa|haber|donanım|giriş|tam boyutta gör)/i.test(paragraph));
+  return {
+    image: imageMatch?.[1] || "",
+    description: description || "Haberi okumak için başlığa tıklayın."
+  };
+}
