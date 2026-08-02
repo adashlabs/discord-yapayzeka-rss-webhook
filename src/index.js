@@ -2,6 +2,7 @@ import { parseRss, parseJinaFeed, parseJinaArticle } from "./rss.js";
 const filterSummary = "Filtre yok: RSS'teki tüm yeni haberler";
 
 const RSS_URL = "https://www.donanimhaber.com/rss/tum/";
+const GITHUB_CACHE_URL = "https://github.com/adashlabs/discord-yapayzeka-rss-webhook/releases/download/rss-cache/feed.xml";
 const JINA_FEED_URL = `https://r.jina.ai/${RSS_URL}`;
 const STATE_KEY = "bot:state:v1";
 const SEEN_TTL_SECONDS = 60 * 60 * 24 * 90;
@@ -73,8 +74,8 @@ async function readState(env) {
 
 async function loadArticles() {
   let directStatus = "istek başarısız";
+  const cacheBucket = Math.floor(Date.now() / 300000);
   try {
-    const cacheBucket = Math.floor(Date.now() / 300000);
     const response = await fetch(`${RSS_URL}?worker_check=${cacheBucket}`, {
       redirect: "follow",
       signal: AbortSignal.timeout(12000),
@@ -95,17 +96,37 @@ async function loadArticles() {
     directStatus = error instanceof Error ? error.message : String(error);
   }
 
-  console.warn(`Doğrudan RSS kullanılamadı (${directStatus}); Jina yedeği deneniyor.`);
+  let githubStatus = "istek başarısız";
+  console.warn(`Doğrudan RSS kullanılamadı (${directStatus}); GitHub önbelleği deneniyor.`);
+  try {
+    const cached = await fetch(`${GITHUB_CACHE_URL}?worker_check=${cacheBucket}`, {
+      redirect: "follow",
+      signal: AbortSignal.timeout(12000),
+      headers: {
+        accept: "application/rss+xml, application/xml, text/xml;q=0.9, */*;q=0.8",
+        "user-agent": "DH-News-Discord-Worker/3.0"
+      }
+    });
+    githubStatus = String(cached.status);
+    if (cached.ok) {
+      const articles = parseRss(await cached.text());
+      if (articles.length) return { articles, source: "github-cache" };
+      githubStatus = "boş RSS";
+    }
+  } catch (error) {
+    githubStatus = error instanceof Error ? error.message : String(error);
+  }
+
+  console.warn(`GitHub önbelleği kullanılamadı (${githubStatus}); Jina yedeği deneniyor.`);
   const fallback = await fetch(JINA_FEED_URL, {
     signal: AbortSignal.timeout(15000),
-    headers: { accept: "text/plain; charset=utf-8", "user-agent": "DH-News-Discord-Worker/2.0" }
+    headers: { accept: "text/plain; charset=utf-8", "user-agent": "DH-News-Discord-Worker/3.0" }
   });
-  if (!fallback.ok) throw new Error(`RSS alınamadı (doğrudan: ${directStatus}, yedek: ${fallback.status}).`);
+  if (!fallback.ok) throw new Error(`RSS alınamadı (doğrudan: ${directStatus}, GitHub: ${githubStatus}, Jina: ${fallback.status}).`);
   const articles = parseJinaFeed(await fallback.text());
-  if (!articles.length) throw new Error(`RSS yedeği ayrıştırılamadı (doğrudan: ${directStatus}).`);
+  if (!articles.length) throw new Error(`RSS yedeği ayrıştırılamadı (doğrudan: ${directStatus}, GitHub: ${githubStatus}).`);
   return { articles, source: "jina-fallback" };
 }
-
 async function enrichFallbackArticle(article) {
   if (!article.needsEnrichment) return article;
   try {
@@ -167,7 +188,7 @@ async function checkFeed(env) {
     lastCheck: now,
     lastSent: sent ? now : state.lastSent,
     lastError: null,
-    lastSource: null
+    lastSource: source
   };
   await env.NEWS_STATE.put(STATE_KEY, JSON.stringify(next));
   return { initialized: false, checked: articles.length, matched: candidates.length, sent, source };

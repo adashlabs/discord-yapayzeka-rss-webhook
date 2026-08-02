@@ -1,0 +1,45 @@
+name: DonanimHaber RSS onbellegini guncelle
+
+on:
+  schedule:
+    - cron: "2-57/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: rss-cache-update
+  cancel-in-progress: true
+
+jobs:
+  update-rss-cache:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: RSS dosyasini indir
+        shell: bash
+        run: |
+          curl --fail --location --silent --show-error \
+            --retry 3 --retry-delay 2 \
+            --user-agent "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/138.0 Safari/537.36" \
+            --header "Accept: application/rss+xml, application/xml, text/xml;q=0.9, */*;q=0.8" \
+            --header "Accept-Language: tr-TR,tr;q=0.9,en;q=0.8" \
+            "https://www.donanimhaber.com/rss/tum/?github_cache=${GITHUB_RUN_ID}" \
+            --output feed.xml
+          grep --quiet "<rss" feed.xml
+          grep --quiet "<item>" feed.xml
+
+      - name: Sabit Release dosyasini guncelle
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          gh release view rss-cache --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || \
+            gh release create rss-cache --repo "$GITHUB_REPOSITORY" \
+              --title "Otomatik RSS Önbelleği" \
+              --notes "Cloudflare Worker için otomatik güncellenen RSS önbelleği." \
+              --latest=false
+          gh release upload rss-cache feed.xml \
+            --repo "$GITHUB_REPOSITORY" \
+            --clobber
