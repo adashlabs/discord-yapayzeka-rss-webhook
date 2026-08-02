@@ -1,12 +1,13 @@
 # Discord Yapay Zekâ RSS Webhook
 
-DonanımHaber'in genel RSS akışını her 5 dakikada bir kontrol eden Cloudflare Worker. RSS'e eklenen her yeni haberi, konusu ne olursa olsun Discord kanalına görselli embed biçiminde gönderir.
+DonanımHaber'in genel RSS akışını her 5 dakikada bir kontrol eden Cloudflare Worker. Geniş bir yapay zekâ, yazılım, siber güvenlik, donanım, bilim ve teknoloji filtresiyle seçilen yeni haberleri Discord kanalına görselli embed biçiminde gönderir.
 
 ## Özellikler
 
 - RSS akışını 5 dakikada bir otomatik kontrol eder.
 - İlk kurulumda eski haberleri Discord'a doldurmaz.
 - Gönderilen haberleri 90 gün boyunca hatırlar ve tekrar göndermez.
+- Yüzlerce AI şirketi, model, ürün ve önemli kişi adını doğrudan tanır.
 - Haber görseli, başlık, açıklama, kategori, kaynak ve yayın tarihini içeren Discord embed'i oluşturur.
 - Webhook adresini kaynak kodunda değil, şifreli Cloudflare Secret olarak saklar.
 - Worker adresinde çalışma durumunu gösteren bir kontrol ekranı sunar.
@@ -110,19 +111,20 @@ Otomatik KV oluşturma beta özelliğinde hesabınıza bağlı bir sorun yaşan�
 */5 * * * *
 ```
 
-## Gönderim mantığı
+## Geniş filtre sistemi
 
-Filtre kullanılmaz. DonanımHaber RSS akışına eklenen her yeni haber gönderilir:
+Filtre özellikle geniş tutulur. Aşağıdaki içerikler kabul edilir:
 
-- Yapay zekâ, yazılım ve teknoloji
-- Telefon, donanım ve oyun
-- Otomobil, bilim, sinema ve gündem
-- Kampanya veya diğer tüm RSS içerikleri
+- AI şirketleri ve modelleri: OpenAI, ChatGPT, Claude, Gemini, Llama, DeepSeek, Qwen, Kimi, GLM, Midjourney, Perplexity ve çok daha fazlası
+- Önemli kişiler: Sam Altman, Jensen Huang, Demis Hassabis, Dario Amodei, Ilya Sutskever, Mira Murati, Liang Wenfeng ve diğer AI liderleri
+- Yazılım: Windows, Linux, Android, iOS, uygulamalar, geliştirici araçları, açık kaynak, veritabanları ve bulut
+- Siber güvenlik: saldırılar, açıklar, veri sızıntıları, zararlı yazılımlar ve gizlilik
+- Donanım ve tüketici teknolojisi: işlemci, GPU, telefon, tablet, bilgisayar, oyun donanımı, giyilebilir cihaz ve ağ teknolojileri
+- Gelecek teknolojileri: robotik, otonom sürüş, kuantum, uzay, biyoteknoloji, enerji ve batarya teknolojileri
 
-Yalnızca iki durumda haber gönderilmez:
+Başlıkta güçlü bir eşleşme 5 puan, açıklamada güçlü eşleşme 3 puan, yardımcı eşleşme 1 puan alır. Açıkça film–dizi, magazin, spor, market kataloğu veya genel gündem olan ve güçlü teknoloji sinyali taşımayan içerikler elenir.
 
-1. İlk kurulum sırasında RSS'te zaten bulunan eski haberler
-2. Daha önce Discord'a gönderilmiş haberler
+Anahtar kelimeler ve puanlama kuralları [`src/filter.js`](src/filter.js) dosyasındadır.
 ## Yerel geliştirme
 
 İsteğe bağlı olarak projeyi bilgisayarınızda test etmek için:

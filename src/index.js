@@ -1,6 +1,5 @@
 import { parseRss } from "./rss.js";
-
-const filterSummary = "Filtre yok: RSS'teki tüm yeni haberler";
+import { classifyArticle, filterSummary } from "./filter.js";
 
 const RSS_URL = "https://www.donanimhaber.com/rss/tum/";
 const STATE_KEY = "bot:state:v1";
@@ -95,11 +94,12 @@ async function checkFeed(env) {
   for (const article of articles) {
     const key = await articleKey(article);
     if (await env.NEWS_STATE.get(key)) continue;
-    candidates.push({
-      article,
-      classification: { category: "Yeni Haber", color: 0xf97316 },
-      key
-    });
+    const classification = classifyArticle(article);
+    if (!classification.matched) {
+      await env.NEWS_STATE.put(key, "filtered", { expirationTtl: SEEN_TTL_SECONDS });
+      continue;
+    }
+    candidates.push({ article, classification, key });
   }
 
   candidates.sort((a, b) => new Date(a.article.pubDate) - new Date(b.article.pubDate));
@@ -146,7 +146,9 @@ function statusPage(state, configured) {
 
 export default {
   async scheduled(_controller, env, ctx) {
-    ctx.waitUntil(checkFeed(env).catch(async (error) => {
+    ctx.waitUntil(checkFeed(env).then((result) => {
+      console.log("RSS kontrolü tamamlandı", JSON.stringify(result));
+    }).catch(async (error) => {
       console.error(error);
       await recordError(env, error);
       throw error;
