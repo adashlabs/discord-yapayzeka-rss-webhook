@@ -1,6 +1,6 @@
 # Discord Yapay Zekâ RSS Webhook
 
-DonanımHaber'in genel RSS akışını her 5 dakikada bir kontrol eden Cloudflare Worker. Yalnızca yapay zekâ, yazılım, siber güvenlik ve odak teknoloji haberlerini seçerek Discord kanalına görselli embed biçiminde gönderir.
+DonanımHaber'in genel RSS akışını her 5 dakikada bir kontrol eden Cloudflare Worker. RSS'e eklenen her yeni haberi, konusu ne olursa olsun Discord kanalına görselli embed biçiminde gönderir.
 
 ## Özellikler
 
@@ -8,8 +8,6 @@ DonanımHaber'in genel RSS akışını her 5 dakikada bir kontrol eden Cloudflar
 - İlk kurulumda eski haberleri Discord'a doldurmaz.
 - Gönderilen haberleri 90 gün boyunca hatırlar ve tekrar göndermez.
 - Haber görseli, başlık, açıklama, kategori, kaynak ve yayın tarihini içeren Discord embed'i oluşturur.
-- Film, dizi, oyun kampanyası, otomobil, market indirimi ve sıradan ürün haberlerini eler.
-- DeepSeek, GLM, Qwen, Kimi, Gemini ve önemli yapay zekâ isimlerini güçlü eşleşme olarak tanır.
 - Webhook adresini kaynak kodunda değil, şifreli Cloudflare Secret olarak saklar.
 - Worker adresinde çalışma durumunu gösteren bir kontrol ekranı sunar.
 
@@ -112,18 +110,19 @@ Otomatik KV oluşturma beta özelliğinde hesabınıza bağlı bir sorun yaşan�
 */5 * * * *
 ```
 
-## Filtre sistemi
+## Gönderim mantığı
 
-Filtre, haber başlığını ve açıklamasını puanlar:
+Filtre kullanılmaz. DonanımHaber RSS akışına eklenen her yeni haber gönderilir:
 
-- Başlıktaki güçlü eşleşme: 5 puan
-- Açıklamadaki güçlü eşleşme: 3 puan
-- Yardımcı eşleşme: 1 puan
+- Yapay zekâ, yazılım ve teknoloji
+- Telefon, donanım ve oyun
+- Otomobil, bilim, sinema ve gündem
+- Kampanya veya diğer tüm RSS içerikleri
 
-Yapay zekâ, yazılım, siber güvenlik ve odak teknoloji haberleri kabul edilir. Eğlence, otomobil, kampanya ve yalnızca ürün özelliği anlatan içerikler engellenir.
+Yalnızca iki durumda haber gönderilmez:
 
-Anahtar kelimeler ve puanlama kuralları [`src/filter.js`](src/filter.js) dosyasındadır.
-
+1. İlk kurulum sırasında RSS'te zaten bulunan eski haberler
+2. Daha önce Discord'a gönderilmiş haberler
 ## Yerel geliştirme
 
 İsteğe bağlı olarak projeyi bilgisayarınızda test etmek için:
